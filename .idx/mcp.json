@@ -1,0 +1,11 @@
+{
+    "version": 1,
+    "tools": {
+        "supabase": {
+            "enabled": true,
+            "project_url": "https://nqlaenbnlquzczawhfta.supabase.co",
+            "anon_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xbGFlbmJubHF1emN6YXdoZnRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1NjkwMDgsImV4cCI6MjA4NjE0NTAwOH0.xLot8fsilC9Vbtg1QCB_RyYn-_UKKtUphpy-SHmI_dc",
+            "service_role_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xbGFlbmJubHF1emN6YXdoZnRhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDU2OTAwOCwiZXhwIjoyMDg2MTQ1MDA4fQ.kUnKM-Hy63XlLr9j2k_m16uC1p3mM3VOocamwKhJpAQ"
+        }
+    }
+}

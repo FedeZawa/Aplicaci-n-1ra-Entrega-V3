@@ -1,57 +1,67 @@
-export enum UserRole {
-  ADMIN = 'ADMIN',
-  STUDENT = 'STUDENT',
-}
+export type UserRole = 'admin' | 'student';
 
-export interface User {
-  id: string;
+export interface UserProfile {
+  id: string; // uuid
   email: string;
   full_name: string;
   role: UserRole;
+  date_start: string; // ISO date
+  is_active: boolean;
+  unit?: string;
   avatar_url?: string;
-  unit?: string; // For grouping students/members
 }
 
-export interface ClassDefinition {
-  id: string;
+export interface GymClass {
+  id: string; // uuid
   name: string;
   description?: string;
-  instructor: string;
   capacity: number;
-  duration_min: number;
+  day_of_week: number; // 0-6
+  start_time: string; // "HT:mm:ss"
+  end_time: string; // "HT:mm:ss"
   image_url?: string;
-  schedule_days: number[]; // 0 = Sunday, 1 = Monday...
-  schedule_time: string; // "18:00"
+  is_active: boolean;
 }
+
+export type SessionStatus = 'available' | 'cancelled' | 'completed';
 
 export interface ClassSession {
-  id: string;
-  class_def_id: string;
-  date: string; // ISO Date string YYYY-MM-DD
+  id: string; // uuid
+  class_id: string; // FK
+  session_date: string; // YYYY-MM-DD
   start_time: string;
-  current_bookings: number;
-  definition?: ClassDefinition; // Hydrated
+  end_time: string;
+  capacity: number;
+  status: SessionStatus;
+  // Hydrated fields (optional)
+  class?: GymClass;
+  current_bookings_count?: number; // Calculated view
 }
 
-export interface Booking {
-  id: string;
+export type ReservationStatus = 'confirmed' | 'cancelled';
+
+export interface Reservation {
+  id: string; // uuid
+  session_id: string;
   user_id: string;
-  class_session_id: string;
-  status: 'CONFIRMED' | 'CANCELLED';
+  status: ReservationStatus;
   created_at: string;
-  session?: ClassSession; // Hydrated
+  // Hydrated fields
+  session?: ClassSession;
 }
 
 export interface Announcement {
   id: string;
   title: string;
-  message: string;
+  content: string;
+  priority: number;
+  is_published: boolean;
   created_at: string;
-  is_active: boolean;
 }
 
-export interface ToastMessage {
-  id: string;
-  type: 'success' | 'error' | 'info';
-  message: string;
+export interface AppSettings {
+  min_hours_advance: number;
+  max_active_reservations: number;
+  allow_cancellations: boolean;
+  theme_default: 'light' | 'dark';
 }
