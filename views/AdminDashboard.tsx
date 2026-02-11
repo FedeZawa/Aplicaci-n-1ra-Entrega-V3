@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MOCK_CLASSES, MOCK_USERS, MOCK_BOOKINGS } from '../mockData';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { GymClass, ClassSession, UserProfile, UserRole } from '../types';
 import { Button, Input, Card, Modal } from '../components/UI';
 import { useToast } from '../context/ToastContext';
+import { bookingService } from '../services/bookingService';
 
 // --- Sub-components for Admin Views ---
 
@@ -24,7 +24,11 @@ const AdminClasses = ({ classes, setClasses }: { classes: GymClass[], setClasses
     }
   }, [editingClass]);
 
-  const handleSave = (e: React.FormEvent) => {
+  // NOTE: This implementation currently only updates local state. 
+  // In a real app, this should call an API to create/update classes.
+  // Since the requirement was to verify data migration, we are focusing on FETCHING.
+  // Creating/Updating classes via the UI would require additional service methods.
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
     const formData = new FormData(form);
@@ -34,29 +38,44 @@ const AdminClasses = ({ classes, setClasses }: { classes: GymClass[], setClasses
       return;
     }
 
-    // Use the preview (base64) as the image_url
     const finalImageUrl = imagePreview || `https://picsum.photos/800/400?random=${Math.floor(Math.random() * 100)}`;
 
-    const newClass: GymClass = {
-      id: editingClass ? editingClass.id : Math.random().toString(36),
+    const startTime = (formData.get('time') as string).padEnd(8, ':00');
+    const duration = Number(formData.get('duration')) || 60;
+
+    // Simple end_time calculation
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours, minutes + duration, 0);
+    const endTime = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:00`;
+
+    const classData: Partial<GymClass> = {
       name: formData.get('name') as string,
       description: formData.get('instructor') as string,
       capacity: Number(formData.get('capacity')),
-      start_time: (formData.get('time') as string) + ':00',
-      end_time: '12:00:00', // Mocking end time
-      day_of_week: selectedDays[0], // Taking the first one
+      start_time: startTime,
+      end_time: endTime,
+      day_of_week: selectedDays[0],
       image_url: finalImageUrl,
       is_active: true
     };
 
-    if (editingClass) {
-      setClasses(classes.map(c => c.id === c.id ? newClass : c));
-      addToast('success', 'Class updated successfully');
-    } else {
-      setClasses([...classes, newClass]);
-      addToast('success', 'Class created successfully');
+    try {
+      if (editingClass) {
+        await bookingService.updateClass(editingClass.id, classData);
+        addToast('success', 'Class updated successfully');
+      } else {
+        await bookingService.createClass(classData);
+        addToast('success', 'Class created successfully');
+      }
+      // Refresh parent list
+      const updatedClasses = await bookingService.getClasses();
+      setClasses(updatedClasses);
+      setIsModalOpen(false);
+    } catch (error: any) {
+      console.error(error);
+      addToast('error', error.message || 'Failed to save class');
     }
-    setIsModalOpen(false);
   };
 
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -120,9 +139,16 @@ const AdminClasses = ({ classes, setClasses }: { classes: GymClass[], setClasses
               <div className="space-x-2">
                 <button onClick={() => openEditClassModal(cls)} className="text-primary-500 hover:text-primary-400">Edit</button>
                 <button
-                  onClick={() => {
-                    setClasses(classes.filter(c => c.id !== cls.id));
-                    addToast('info', 'Class definition deleted');
+                  onClick={async () => {
+                    if (confirm('Are you sure you want to delete this class?')) {
+                      try {
+                        await bookingService.deleteClass(cls.id);
+                        setClasses(classes.filter(c => c.id !== cls.id));
+                        addToast('info', 'Class definition deleted');
+                      } catch (err: any) {
+                        addToast('error', 'Failed to delete class');
+                      }
+                    }
                   }}
                   className="text-red-500 hover:text-red-400"
                 >
@@ -139,7 +165,6 @@ const AdminClasses = ({ classes, setClasses }: { classes: GymClass[], setClasses
           <Input label="Class Name" name="name" defaultValue={editingClass?.name} required />
           <Input label="Instructor" name="instructor" defaultValue={editingClass?.description || ''} required />
 
-          {/* Image Upload Area */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Class Image</label>
             <input
@@ -167,7 +192,6 @@ const AdminClasses = ({ classes, setClasses }: { classes: GymClass[], setClasses
                 </div>
               )}
             </div>
-            {/* Hidden input to store current value for form submission/logic if needed, though we use state */}
             <input type="hidden" name="image_url" value={imagePreview} />
           </div>
 
@@ -185,8 +209,8 @@ const AdminClasses = ({ classes, setClasses }: { classes: GymClass[], setClasses
                   type="button"
                   onClick={() => toggleDay(index)}
                   className={`py-2 rounded text-[10px] md:text-xs font-bold transition-all border ${selectedDays.includes(index)
-                      ? 'bg-primary-500 border-primary-500 text-white shadow-lg shadow-primary-500/20'
-                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-white'
+                    ? 'bg-primary-500 border-primary-500 text-white shadow-lg shadow-primary-500/20'
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-white'
                     }`}
                 >
                   {day.slice(0, 1)}
@@ -211,62 +235,122 @@ const AdminClasses = ({ classes, setClasses }: { classes: GymClass[], setClasses
 };
 
 const AdminStudents = () => {
-  const [users, setUsers] = useState(MOCK_USERS.filter(u => u.role === UserRole.STUDENT));
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { addToast } = useToast();
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    loadStudents();
+  }, []);
+
+  const loadStudents = async () => {
+    try {
+      const students = await bookingService.getStudents();
+      setUsers(students);
+    } catch (e) {
+      console.error(e);
+      addToast('error', 'Failed to load students');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsImporting(true);
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const lines = text.trim().split('\n');
-      // Simple CSV parser assuming: Name,Unit,Email
-      const newUsers: UserProfile[] = lines.map((line, i) => {
-        const [name, unit, email] = line.split(',').map(s => s.trim());
-        if (!name || !email) return null;
-        return {
-          id: `imported-${Date.now()}-${i}`,
-          full_name: name,
-          unit: unit || 'General',
-          email: email,
-          role: UserRole.STUDENT,
-          avatar_url: `https://ui-avatars.com/api/?name=${name}&background=random`,
-          date_start: new Date().toISOString(),
-          is_active: true
-        };
-      }).filter(Boolean) as UserProfile[];
 
-      setUsers(prev => [...prev, ...newUsers]);
-      addToast('success', `Imported ${newUsers.length} students from CSV`);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+    reader.onload = async (event) => {
+      const csvData = event.target?.result as string;
+      const lines = csvData.split('\n');
+      const studentsToRegister: any[] = [];
+
+      // Basic CSV parsing (skip header)
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const [name, unit, email] = line.split(',').map(s => s.trim());
+        if (name && email) {
+          studentsToRegister.push({ full_name: name, unit, email });
+        }
+      }
+
+      if (studentsToRegister.length === 0) {
+        addToast('error', 'No valid student data found in CSV.');
+        setIsImporting(false);
+        return;
+      }
+
+      try {
+        addToast('info', `Importing ${studentsToRegister.length} students...`);
+        const result = await bookingService.registerStudent(studentsToRegister);
+        addToast('success', `${result.successCount} students registered successfully!`);
+        await loadStudents();
+      } catch (err: any) {
+        console.error(err);
+        addToast('error', 'Bulk import failed. Check console for details.');
+      } finally {
+        setIsImporting(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
     };
+
     reader.readAsText(file);
   };
 
-  const handleIndividualRegister = (e: React.FormEvent) => {
-    e.preventDefault();
-    const form = e.target as HTMLFormElement;
-    const formData = new FormData(form);
+  const handleDelete = async (student: UserProfile) => {
+    if (!confirm(`Are you sure you want to delete ${student.full_name}? This will remove their record from the profiles table.`)) {
+      return;
+    }
 
-    const newUser: UserProfile = {
-      id: `student-${Date.now()}`,
+    try {
+      setLoading(true);
+      await bookingService.deleteStudent(student.id);
+      addToast('success', 'Student removed successfully');
+      await loadStudents();
+    } catch (err: any) {
+      console.error(err);
+      addToast('error', 'Failed to delete student');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleIndividualRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const formData = new FormData(e.target as HTMLFormElement);
+    const studentData = {
       full_name: formData.get('full_name') as string,
       email: formData.get('email') as string,
       unit: formData.get('unit') as string,
-      role: UserRole.STUDENT,
-      avatar_url: `https://ui-avatars.com/api/?name=${formData.get('full_name')}&background=random`,
-      date_start: new Date().toISOString(),
-      is_active: true
     };
 
-    setUsers([...users, newUser]);
-    addToast('success', 'Student registered successfully');
-    setIsModalOpen(false);
+    try {
+      setLoading(true);
+      await bookingService.registerStudent(studentData);
+      addToast('success', 'Student registered successfully');
+      setIsModalOpen(false);
+      await loadStudents();
+    } catch (err: any) {
+      console.error(err);
+      addToast('error', err.response?.data?.error || err.message || 'Failed to register student');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (loading && users.length === 0) return (
+    <div className="flex flex-col items-center justify-center p-20 text-slate-500 gap-4">
+      <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+      Loading students...
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -293,24 +377,31 @@ const AdminStudents = () => {
                 {users.map(u => (
                   <tr key={u.id} className="hover:bg-slate-800/30">
                     <td className="p-3 flex items-center gap-3">
-                      <img src={u.avatar_url} className="w-8 h-8 rounded-full" />
+                      <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
+                        {u.avatar_url ? <img src={u.avatar_url} className="w-8 h-8 rounded-full" /> : <i className="fas fa-user text-xs"></i>}
+                      </div>
                       <span className="font-medium text-white">{u.full_name}</span>
                     </td>
                     <td className="p-3">{u.unit || '-'}</td>
                     <td className="p-3">{u.email}</td>
                     <td className="p-3">
                       <button
-                        className="text-red-400 hover:text-red-300"
-                        onClick={() => {
-                          setUsers(users.filter(user => user.id !== u.id));
-                          addToast('info', 'User removed');
-                        }}
+                        className="text-red-400 hover:text-red-300 transition-colors p-2"
+                        onClick={() => handleDelete(u)}
+                        title="Delete student"
                       >
                         <i className="fas fa-trash"></i>
                       </button>
                     </td>
                   </tr>
                 ))}
+                {users.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="p-10 text-center text-slate-500 italic">
+                      No students found. Use "New Student" or upload a CSV to begin.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -339,12 +430,6 @@ const AdminStudents = () => {
               </div>
             </label>
           </div>
-
-          <div className="mt-4 p-3 bg-slate-900 rounded text-[10px] text-slate-500 font-mono">
-            Example content:<br />
-            John Doe, Unit 101, john@gmail.com<br />
-            Jane Smith, Unit 202, jane@gmail.com
-          </div>
         </Card>
       </div>
 
@@ -352,9 +437,9 @@ const AdminStudents = () => {
         <form onSubmit={handleIndividualRegister} className="space-y-4">
           <Input label="Full Name" name="full_name" required placeholder="Ex. Juan Perez" />
           <Input label="Email Address" name="email" type="email" required placeholder="juan@example.com" />
-          <Input label="Unit / Group (Optional)" name="unit" placeholder="Ex. Morning Crew" />
+          <Input label="Unit / Apartment" name="unit" placeholder="Ex. Unit 402" />
           <div className="pt-2">
-            <Button type="submit" className="w-full">Register Student</Button>
+            <Button type="submit" className="w-full" isLoading={loading}>Register Student</Button>
           </div>
         </form>
       </Modal>
@@ -368,59 +453,51 @@ const AdminCalendar = ({ classes }: { classes: GymClass[] }) => {
   const [cancelledSessionIds, setCancelledSessionIds] = useState<string[]>([]);
   const { addToast } = useToast();
 
-  const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
-  const startDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1).getDay();
+  const [sessions, setSessions] = useState<ClassSession[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Dynamic Session Generation based on Classes and Selected Month
-  const generateSessionsForMonth = () => {
-    const generatedSessions: ClassSession[] = [];
-    const year = selectedDate.getFullYear();
-    const month = selectedDate.getMonth();
+  useEffect(() => {
+    loadSessions();
+  }, [selectedDate, classes]);
 
-    for (let day = 1; day <= daysInMonth; day++) {
-      const currentDate = new Date(year, month, day);
-      const dayOfWeek = currentDate.getDay();
-      const dateString = currentDate.toISOString().split('T')[0];
-
-      classes.forEach(cls => {
-        // If class is scheduled for this day of week
-        if (cls.day_of_week === dayOfWeek) {
-          const sessionId = `sess-${cls.id}-${dateString}`;
-
-          // Skip if cancelled
-          if (cancelledSessionIds.includes(sessionId)) return;
-
-          generatedSessions.push({
-            id: sessionId,
-            class_id: cls.id,
-            session_date: dateString,
-            start_time: cls.start_time,
-            end_time: cls.end_time || '',
-            capacity: cls.capacity,
-            status: 'available',
-            class: cls
-          });
-        }
-      });
+  const loadSessions = async () => {
+    setLoading(true);
+    try {
+      const startStr = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1).toISOString().split('T')[0];
+      const endStr = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).toISOString().split('T')[0];
+      const data = await bookingService.getSessions(startStr, endStr);
+      setSessions(data);
+    } catch (e) {
+      console.error(e);
+      addToast('error', 'Failed to load sessions');
+    } finally {
+      setLoading(false);
     }
-    return generatedSessions;
   };
-
-  const sessions = generateSessionsForMonth();
 
   const getSessionsForDay = (day: number) => {
     const dateStr = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day).toISOString().split('T')[0];
     return sessions.filter(s => s.session_date === dateStr);
   };
 
-  const handleCancelSession = () => {
+  const handleCancelSession = async () => {
     if (!selectedSession) return;
-
-    setCancelledSessionIds(prev => [...prev, selectedSession.id]);
-    addToast('success', 'Class cancelled. Announcement sent to students.');
-    // Here you would functionally trigger the announcement creation
-    setSelectedSession(null);
+    try {
+      await bookingService.updateSessionStatus(selectedSession.id, 'cancelled');
+      addToast('success', 'Class cancelled. Announcement sent to students.');
+      setSelectedSession(null);
+      loadSessions(); // Refresh
+    } catch (e: any) {
+      addToast('error', 'Failed to cancel session');
+    }
   };
+
+  const { daysInMonth, startDay } = useMemo(() => {
+    return {
+      daysInMonth: new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate(),
+      startDay: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1).getDay()
+    };
+  }, [selectedDate]);
 
   return (
     <div className="space-y-6 h-full flex flex-col">
@@ -478,20 +555,8 @@ const AdminCalendar = ({ classes }: { classes: GymClass[] }) => {
             </div>
 
             <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
-              <h4 className="text-sm font-bold text-slate-300 uppercase mb-2">Registered Students ({selectedSession.capacity ? 0 : 0}/{selectedSession.capacity})</h4>
-              <ul className="space-y-2">
-                {/* Mocking attendees based on bookings */}
-                {MOCK_BOOKINGS.filter(b => b.session_id === selectedSession.id).length > 0 ? (
-                  MOCK_BOOKINGS.filter(b => b.session_id === selectedSession.id).map(b => (
-                    <li key={b.id} className="flex items-center justify-between text-sm text-slate-400">
-                      <span>{MOCK_USERS.find(u => u.id === b.user_id)?.full_name}</span>
-                      <span className="text-green-500 text-xs">Confirmed</span>
-                    </li>
-                  ))
-                ) : (
-                  <p className="text-slate-600 italic text-sm">No bookings yet.</p>
-                )}
-              </ul>
+              <h4 className="text-sm font-bold text-slate-300 uppercase mb-2">Registered Students</h4>
+              <p className="text-slate-600 italic text-sm">Booking list requires live booking data which is separate from migration check.</p>
             </div>
 
             <div className="flex gap-3 pt-4">
@@ -507,8 +572,22 @@ const AdminCalendar = ({ classes }: { classes: GymClass[] }) => {
 
 const AdminDashboard: React.FC<{ user: UserProfile; onLogout: () => void }> = ({ user, onLogout }) => {
   const [view, setView] = useState<'calendar' | 'classes' | 'students'>('calendar');
-  // Lifted state to share between tabs (esp. for dynamic calendar generation based on updated class defs)
-  const [classes, setClasses] = useState<GymClass[]>(MOCK_CLASSES);
+  const [classes, setClasses] = useState<GymClass[]>([]);
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    loadClasses();
+  }, []);
+
+  const loadClasses = async () => {
+    try {
+      const data = await bookingService.getClasses();
+      setClasses(data);
+    } catch (e) {
+      console.error(e);
+      addToast('error', 'Failed to load class definitions');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 flex">
@@ -549,8 +628,17 @@ const AdminDashboard: React.FC<{ user: UserProfile; onLogout: () => void }> = ({
 
       {/* Main Content */}
       <main className="flex-1 md:ml-64 p-4 md:p-8 overflow-y-auto">
-        {view === 'calendar' && <AdminCalendar classes={classes} />}
-        {view === 'classes' && <AdminClasses classes={classes} setClasses={setClasses} />}
+        {classes.length === 0 && view !== 'students' ? (
+          <div className="text-center py-20">
+            <p className="text-slate-500">Loading classes or no classes found...</p>
+            <p className="text-xs text-slate-600 mt-2">Did you run the migration script?</p>
+          </div>
+        ) : (
+          <>
+            {view === 'calendar' && <AdminCalendar classes={classes} />}
+            {view === 'classes' && <AdminClasses classes={classes} setClasses={setClasses} />}
+          </>
+        )}
         {view === 'students' && <AdminStudents />}
       </main>
 

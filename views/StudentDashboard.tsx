@@ -1,63 +1,74 @@
-import React, { useState, useMemo } from 'react';
-import { MOCK_CLASSES, MOCK_ANNOUNCEMENTS, MOCK_BOOKINGS, MOCK_USERS } from '../mockData';
-import { ClassSession, UserProfile, Reservation, UserRole, GymClass, Announcement } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { ClassSession, UserProfile, Reservation, GymClass, Announcement } from '../types';
 import { Button, Card, Modal, Input } from '../components/UI';
 import { useToast } from '../context/ToastContext';
+import { bookingService } from '../services/bookingService';
 
 // --- Student Calendar with Dynamic Generation ---
-const StudentCalendar = ({ userId }: { userId: string }) => {
+const StudentCalendar = ({ userId, classes, announcements }: { userId: string, classes: GymClass[], announcements: Announcement[] }) => {
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
     const [selectedSession, setSelectedSession] = useState<ClassSession | null>(null);
     const [bookings, setBookings] = useState<string[]>([]); // Array of session IDs
     const { addToast } = useToast();
 
-    const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
-    const startDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1).getDay();
+    const [sessions, setSessions] = useState<ClassSession[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    // Dynamic Session Generation logic (Same as Admin but read-only)
-    const sessions = useMemo(() => {
-        const generated: ClassSession[] = [];
-        const year = selectedDate.getFullYear();
-        const month = selectedDate.getMonth();
-
-        for (let day = 1; day <= daysInMonth; day++) {
-            const currentDate = new Date(year, month, day);
-            const dayOfWeek = currentDate.getDay();
-            const dateString = currentDate.toISOString().split('T')[0];
-
-            MOCK_CLASSES.forEach((cls: GymClass) => {
-                if (cls.day_of_week === dayOfWeek) { // GymClass uses day_of_week (number)
-                    generated.push({
-                        id: `sess-${cls.id}-${dateString}`,
-                        class_id: cls.id,
-                        session_date: dateString,
-                        start_time: cls.start_time,
-                        end_time: cls.end_time,
-                        capacity: cls.capacity,
-                        status: 'available',
-                        class: cls
-                    });
-                }
-            });
-        }
-        return generated;
+    useEffect(() => {
+        loadSessions();
+        loadUserBookings();
     }, [selectedDate]);
+
+    const loadSessions = async () => {
+        setLoading(true);
+        try {
+            const startStr = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1).toISOString().split('T')[0];
+            const endStr = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).toISOString().split('T')[0];
+            const data = await bookingService.getSessions(startStr, endStr);
+            setSessions(data);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadUserBookings = async () => {
+        try {
+            const data = await bookingService.getUserReservations();
+            setBookings(data.filter(b => b.status === 'confirmed').map(b => b.session_id));
+        } catch (e) {
+            console.error(e);
+        }
+    };
 
     const getSessionsForDay = (day: number) => {
         const dateStr = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day).toISOString().split('T')[0];
         return sessions.filter(s => s.session_date === dateStr);
     };
 
-    const handleBook = () => {
+    const handleBook = async () => {
         if (!selectedSession) return;
-        if (bookings.includes(selectedSession.id)) {
-            setBookings(bookings.filter(id => id !== selectedSession.id));
-            addToast('info', 'Booking cancelled');
-        } else {
-            setBookings([...bookings, selectedSession.id]);
-            addToast('success', 'Class booked successfully!');
+
+        try {
+            if (bookings.includes(selectedSession.id)) {
+                // Find and cancel
+                const userRes = await bookingService.getUserReservations();
+                const resToCancel = userRes.find(r => r.session_id === selectedSession.id && r.status === 'confirmed');
+                if (resToCancel) {
+                    await bookingService.cancelReservation(resToCancel.id);
+                    addToast('info', 'Booking cancelled');
+                }
+            } else {
+                await bookingService.createReservation(selectedSession.id);
+                addToast('success', 'Class booked successfully!');
+            }
+            loadUserBookings();
+            setSelectedSession(null);
+        } catch (e: any) {
+            console.error(e);
+            addToast('error', e.message || 'Action failed');
         }
-        setSelectedSession(null);
     };
 
     const isBooked = selectedSession && bookings.includes(selectedSession.id);
@@ -65,7 +76,7 @@ const StudentCalendar = ({ userId }: { userId: string }) => {
     return (
         <div className="space-y-4 pb-20">
             {/* Announcements Header */}
-            {MOCK_ANNOUNCEMENTS.filter((a: Announcement) => a.is_published).map((a: Announcement) => (
+            {announcements.map((a: Announcement) => (
                 <div key={a.id} className="bg-primary-500/10 border border-primary-500/20 p-4 rounded-xl flex items-start gap-3">
                     <i className="fas fa-bell text-primary-500 mt-1"></i>
                     <div>
@@ -90,10 +101,10 @@ const StudentCalendar = ({ userId }: { userId: string }) => {
                 {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
                     <div key={i} className="text-center text-xs font-bold text-slate-500 py-2">{d}</div>
                 ))}
-                {Array.from({ length: startDay }).map((_, i) => (
+                {Array.from({ length: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1).getDay() }).map((_, i) => (
                     <div key={`empty-${i}`} />
                 ))}
-                {Array.from({ length: daysInMonth }).map((_, i) => {
+                {Array.from({ length: new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
                     const day = i + 1;
                     const daySessions = getSessionsForDay(day);
                     const isToday = new Date().getDate() === day && new Date().getMonth() === selectedDate.getMonth();
@@ -159,28 +170,27 @@ const StudentCalendar = ({ userId }: { userId: string }) => {
 
 // --- Student History Component ---
 const StudentHistory = ({ userId }: { userId: string }) => {
-    // Mocking a history list based on MOCK_BOOKINGS and some generated past data
-    const history: Reservation[] = [
-        ...MOCK_BOOKINGS.filter(b => b.user_id === userId),
-        // Add fake past booking
-        {
-            id: 'past-1',
-            user_id: userId,
-            session_id: 'old-1',
-            status: 'confirmed',
-            created_at: '2023-01-01',
-            session: {
-                id: 'old-1',
-                class_id: 'c1',
-                session_date: '2023-10-15',
-                start_time: '09:00',
-                end_time: '10:00',
-                capacity: 10,
-                status: 'completed',
-                class: MOCK_CLASSES[0]
-            }
+    const [history, setHistory] = useState<Reservation[]>([]);
+    const [loading, setLoading] = useState(true);
+    const { addToast } = useToast();
+
+    useEffect(() => {
+        loadHistory();
+    }, [userId]);
+
+    const loadHistory = async () => {
+        try {
+            const data = await bookingService.getUserReservations();
+            setHistory(data);
+        } catch (e) {
+            console.error(e);
+            addToast('error', 'Failed to load class history');
+        } finally {
+            setLoading(false);
         }
-    ];
+    };
+
+    if (loading) return <div>Loading history...</div>;
 
     return (
         <div className="space-y-6 max-w-2xl mx-auto pt-4">
@@ -209,8 +219,8 @@ const StudentHistory = ({ userId }: { userId: string }) => {
                         </div>
                         <div className="w-full md:w-auto">
                             <span className={`block w-full text-center px-4 py-2 rounded-lg text-sm font-bold border ${booking.status === 'confirmed'
-                                    ? 'bg-green-500/10 text-green-500 border-green-500/20'
-                                    : 'bg-red-500/10 text-red-500 border-red-500/20'
+                                ? 'bg-green-500/10 text-green-500 border-green-500/20'
+                                : 'bg-red-500/10 text-red-500 border-red-500/20'
                                 }`}>
                                 {booking.status}
                             </span>
@@ -227,8 +237,9 @@ const StudentHistory = ({ userId }: { userId: string }) => {
     );
 };
 
-// --- Student Profile Component ---
+// --- Student Profile Component (unchanged logic, just ensuring no mock data dependency if any) ---
 const StudentProfile = ({ user, onUpdate }: { user: UserProfile, onUpdate: (u: UserProfile) => void }) => {
+    // ... same as before ...
     const [isEditing, setIsEditing] = useState(false);
     const { addToast } = useToast();
 
@@ -261,26 +272,21 @@ const StudentProfile = ({ user, onUpdate }: { user: UserProfile, onUpdate: (u: U
 
             <Card className="space-y-4">
                 <h3 className="text-slate-400 text-xs uppercase font-bold tracking-wider mb-4 border-b border-slate-700 pb-2">Personal Information</h3>
-
                 <div className="grid gap-1">
                     <label className="text-slate-500 text-xs">Email Address</label>
                     <p className="text-white font-medium">{user.email}</p>
                 </div>
-
                 <div className="grid gap-1">
                     <label className="text-slate-500 text-xs">Unit / Group</label>
                     <p className="text-white font-medium">{user.unit || 'General'}</p>
                 </div>
-
                 <div className="grid gap-1">
                     <label className="text-slate-500 text-xs">Password</label>
                     <p className="text-white font-medium">••••••••••••</p>
                 </div>
             </Card>
 
-            <Button variant="secondary" className="w-full" onClick={() => setIsEditing(true)}>
-                Edit Profile
-            </Button>
+            <Button variant="secondary" className="w-full" onClick={() => setIsEditing(true)}>Edit Profile</Button>
 
             <Modal isOpen={isEditing} onClose={() => setIsEditing(false)} title="Edit Profile">
                 <form onSubmit={handleSaveProfile} className="space-y-4">
@@ -299,16 +305,37 @@ const StudentProfile = ({ user, onUpdate }: { user: UserProfile, onUpdate: (u: U
 
 const StudentDashboard: React.FC<{ user: UserProfile; onLogout: () => void; onUpdateUser: (u: UserProfile) => void }> = ({ user, onLogout, onUpdateUser }) => {
     const [view, setView] = useState<'calendar' | 'profile' | 'history'>('calendar');
+    const [classes, setClasses] = useState<GymClass[]>([]);
+    const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+    const { addToast } = useToast();
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const [cls, anns] = await Promise.all([
+                    bookingService.getClasses(),
+                    bookingService.getAnnouncements()
+                ]);
+                setClasses(cls);
+                setAnnouncements(anns);
+            } catch (e) {
+                console.error(e);
+                addToast('error', 'Failed to load dashboard data');
+            }
+        };
+        fetchData();
+    }, []);
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-20 md:pb-0">
+            {/* Header, Nav, and Sidebar logic largely unchanged, effectively using same structure */}
             <header className="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-4 py-4 flex justify-between items-center md:hidden">
                 <div className="font-bold text-lg tracking-tight">OpenPerk</div>
                 <img src={user.avatar_url} onClick={() => setView('profile')} className="w-8 h-8 rounded-full border border-slate-700" />
             </header>
 
             <div className="max-w-4xl mx-auto p-4 md:p-8">
-                {view === 'calendar' && <StudentCalendar userId={user.id} />}
+                {view === 'calendar' && <StudentCalendar userId={user.id} classes={classes} announcements={announcements} />}
                 {view === 'history' && <StudentHistory userId={user.id} />}
                 {view === 'profile' && <StudentProfile user={user} onUpdate={onUpdateUser} />}
             </div>

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Button, Input, Card } from '../components/UI';
 import { useToast } from '../context/ToastContext';
-import { MOCK_USERS } from '../mockData';
-import { UserProfile, UserRole } from '../types';
+import { UserProfile } from '../types';
+import { supabase } from '../services/supabaseClient';
+import { useNavigate } from 'react-router-dom';
 
 interface LoginViewProps {
   onLogin: (user: UserProfile) => void;
@@ -13,26 +14,28 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { addToast } = useToast();
+  const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate API delay
-    setTimeout(() => {
-      const user = MOCK_USERS.find(u => u.email === email);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-      // Password check simulation (hardcoded for demo)
-      const validPassword = user?.role === UserRole.ADMIN ? 'admin123' : 'alumno123';
-
-      if (user && password === validPassword) {
-        addToast('success', `Welcome back, ${user.full_name}`);
-        onLogin(user);
-      } else {
-        addToast('error', 'Invalid credentials. Try demo accounts.');
-      }
+    if (error) {
+      console.error(error);
       setIsLoading(false);
-    }, 1000);
+      addToast('error', error.message);
+      return;
+    }
+
+    if (data.session) {
+      navigate("/student");
+    }
+    setIsLoading(false);
   };
 
   return (
@@ -45,7 +48,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             <i className="fas fa-dumbbell text-3xl text-white"></i>
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">OpenPerk</h1>
-          <p className="text-slate-400 mt-2 text-sm">Sign in to manage your workouts</p>
+          <p className="text-slate-400 mt-2 text-sm">Sign in with Supabase</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
@@ -71,15 +74,11 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
           </Button>
 
           <div className="mt-6 p-4 bg-slate-800/50 rounded-lg text-xs text-slate-400">
-            <p className="font-semibold text-slate-300 mb-1">Demo Credentials:</p>
-            <div className="flex justify-between">
-              <span>Admin: admin@openperk.com</span>
-              <span>admin123</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Student: alumno@openperk.com</span>
-              <span>alumno123</span>
-            </div>
+            <p className="font-semibold text-slate-300 mb-1">Notes:</p>
+            <ul className="list-disc pl-4 space-y-1">
+              <li>Users must be created in Supabase Auth first.</li>
+              <li>Profiles are auto-created on signup via Triggers.</li>
+            </ul>
           </div>
         </form>
       </Card>
