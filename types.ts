@@ -1,4 +1,7 @@
-export type UserRole = 'admin' | 'student';
+export enum UserRole {
+  ADMIN = 'admin',
+  STUDENT = 'student'
+}
 
 export interface UserProfile {
   id: string; // uuid
@@ -64,4 +67,12 @@ export interface AppSettings {
   max_active_reservations: number;
   allow_cancellations: boolean;
   theme_default: 'light' | 'dark';
+}
+
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
+
+export interface ToastMessage {
+  id: string;
+  type: ToastType;
+  message: string;
 }

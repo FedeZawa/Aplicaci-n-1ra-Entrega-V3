@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { Button, Input, Card } from '../components/UI';
 import { useToast } from '../context/ToastContext';
 import { MOCK_USERS } from '../mockData';
-import { User } from '../types';
+import { UserProfile, UserRole } from '../types';
 
 interface LoginViewProps {
-  onLogin: (user: User) => void;
+  onLogin: (user: UserProfile) => void;
 }
 
 const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
@@ -21,10 +21,10 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     // Simulate API delay
     setTimeout(() => {
       const user = MOCK_USERS.find(u => u.email === email);
-      
+
       // Password check simulation (hardcoded for demo)
-      const validPassword = user?.role === 'ADMIN' ? 'admin123' : 'alumno123';
-      
+      const validPassword = user?.role === UserRole.ADMIN ? 'admin123' : 'alumno123';
+
       if (user && password === validPassword) {
         addToast('success', `Welcome back, ${user.full_name}`);
         onLogin(user);
@@ -38,7 +38,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-slate-950 bg-[url('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center">
       <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm"></div>
-      
+
       <Card className="w-full max-w-md relative z-10 border-slate-700/50 bg-slate-900/90 shadow-2xl">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-primary-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary-500/30">
@@ -49,23 +49,23 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
-          <Input 
-            label="Email" 
-            type="email" 
+          <Input
+            label="Email"
+            type="email"
             placeholder="admin@openperk.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
-          <Input 
-            label="Password" 
-            type="password" 
+          <Input
+            label="Password"
+            type="password"
             placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          
+
           <Button type="submit" className="w-full py-3" isLoading={isLoading}>
             Sign In
           </Button>

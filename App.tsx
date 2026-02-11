@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { User, UserRole } from './types';
+import { UserProfile, UserRole } from './types';
 import LoginView from './views/LoginView';
 import AdminDashboard from './views/AdminDashboard';
 import StudentDashboard from './views/StudentDashboard';
 import { ToastProvider } from './context/ToastContext';
 
 const AppContent = () => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     // Check local storage for persisted session
@@ -16,7 +16,7 @@ const AppContent = () => {
     }
   }, []);
 
-  const handleLogin = (u: User) => {
+  const handleLogin = (u: UserProfile) => {
     setUser(u);
     localStorage.setItem('openperk_user', JSON.stringify(u));
   };
@@ -26,7 +26,7 @@ const AppContent = () => {
     localStorage.removeItem('openperk_user');
   };
 
-  const handleUpdateUser = (updatedUser: User) => {
+  const handleUpdateUser = (updatedUser: UserProfile) => {
     setUser(updatedUser);
     localStorage.setItem('openperk_user', JSON.stringify(updatedUser));
   };

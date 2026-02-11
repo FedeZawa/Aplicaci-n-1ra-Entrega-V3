@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+@theme {
+    --color-slate-850: #151f32;
+    --color-slate-900: #0f172a;
+    --color-slate-950: #020617;
+
+    --color-primary-400: #ffaf5e;
+    --color-primary-500: #FF9F38;
+    --color-primary-600: #e08323;
+
+    --font-sans: 'Inter', system-ui, sans-serif;
+}
+
+body {
+    background-color: #0f172a;
+    color: #f8fafc;
+    font-family: var(--font-sans);
+}
+
+/* Custom scrollbar for admin panels */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1e293b;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #FF9F38;
+}

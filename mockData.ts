@@ -1,12 +1,15 @@
-import { User, UserRole, ClassDefinition, ClassSession, Booking, Announcement } from './types';
+import { UserProfile, UserRole, GymClass, ClassSession, Reservation, Announcement } from './types';
 
-export const MOCK_USERS: User[] = [
+// Mapped from old 'User' type to 'UserProfile'
+export const MOCK_USERS: UserProfile[] = [
   {
     id: 'admin-1',
     email: 'admin@openperk.com',
     full_name: 'Admin User',
     role: UserRole.ADMIN,
     avatar_url: 'https://picsum.photos/200',
+    date_start: new Date().toISOString(),
+    is_active: true
   },
   {
     id: 'student-1',
@@ -15,6 +18,8 @@ export const MOCK_USERS: User[] = [
     role: UserRole.STUDENT,
     avatar_url: 'https://picsum.photos/201',
     unit: 'Unit A',
+    date_start: new Date().toISOString(),
+    is_active: true
   },
   {
     id: 'student-2',
@@ -23,39 +28,44 @@ export const MOCK_USERS: User[] = [
     role: UserRole.STUDENT,
     avatar_url: 'https://picsum.photos/202',
     unit: 'Unit B',
+    date_start: new Date().toISOString(),
+    is_active: true
   }
 ];
 
-export const MOCK_CLASSES: ClassDefinition[] = [
+export const MOCK_CLASSES: GymClass[] = [
   {
     id: 'c1',
     name: 'Morning Yoga',
-    instructor: 'Sarah Jenkins',
+    description: 'Sarah Jenkins', // Mapping instructor to description for now or could add instructor field to type
     capacity: 15,
-    duration_min: 60,
+    day_of_week: 1, // Mon
+    start_time: '07:00:00',
+    end_time: '08:00:00',
     image_url: 'https://picsum.photos/800/400?random=1',
-    schedule_days: [1, 3, 5], // Mon, Wed, Fri
-    schedule_time: '07:00'
+    is_active: true
   },
   {
     id: 'c2',
     name: 'HIIT Blast',
-    instructor: 'Mike Tyson',
+    description: 'Mike Tyson',
     capacity: 20,
-    duration_min: 45,
+    day_of_week: 2, // Tue
+    start_time: '18:30:00',
+    end_time: '19:15:00',
     image_url: 'https://picsum.photos/800/400?random=2',
-    schedule_days: [2, 4], // Tue, Thu
-    schedule_time: '18:30'
+    is_active: true
   },
   {
     id: 'c3',
     name: 'Spinning',
-    instructor: 'Anna Spin',
+    description: 'Anna Spin',
     capacity: 10,
-    duration_min: 50,
+    day_of_week: 6, // Sat
+    start_time: '10:00:00',
+    end_time: '10:50:00',
     image_url: 'https://picsum.photos/800/400?random=3',
-    schedule_days: [6], // Sat
-    schedule_time: '10:00'
+    is_active: true
   }
 ];
 
@@ -70,14 +80,16 @@ const generateSessions = (): ClassSession[] => {
   MOCK_CLASSES.forEach(cls => {
     for (let d = 1; d <= daysInMonth; d++) {
       const date = new Date(year, month, d);
-      if (cls.schedule_days.includes(date.getDay())) {
+      if (date.getDay() === cls.day_of_week) {
         sessions.push({
           id: `sess-${cls.id}-${d}`,
-          class_def_id: cls.id,
-          date: date.toISOString().split('T')[0],
-          start_time: cls.schedule_time,
-          current_bookings: Math.floor(Math.random() * 5),
-          definition: cls
+          class_id: cls.id,
+          session_date: date.toISOString().split('T')[0],
+          start_time: cls.start_time,
+          end_time: cls.end_time,
+          capacity: cls.capacity,
+          status: 'available',
+          class: cls
         });
       }
     }
@@ -87,30 +99,33 @@ const generateSessions = (): ClassSession[] => {
 
 export const MOCK_SESSIONS: ClassSession[] = generateSessions();
 
-export const MOCK_BOOKINGS: Booking[] = [
+export const MOCK_BOOKINGS: Reservation[] = [
   {
     id: 'b1',
     user_id: 'student-1',
-    class_session_id: MOCK_SESSIONS[0].id,
-    status: 'CONFIRMED',
+    session_id: MOCK_SESSIONS[0].id,
+    status: 'confirmed',
     created_at: new Date().toISOString(),
     session: MOCK_SESSIONS[0]
   }
+
 ];
 
 export const MOCK_ANNOUNCEMENTS: Announcement[] = [
   {
     id: 'a1',
     title: 'New Equipment Arrived!',
-    message: 'We have upgraded our treadmills to the latest model. Come try them out!',
+    content: 'We have upgraded our treadmills to the latest model. Come try them out!',
     created_at: new Date().toISOString(),
-    is_active: true
+    priority: 1,
+    is_published: true
   },
   {
     id: 'a2',
     title: 'Holiday Hours',
-    message: 'We will be closed on December 25th only.',
+    content: 'We will be closed on December 25th only.',
     created_at: new Date().toISOString(),
-    is_active: true
+    priority: 1,
+    is_published: true
   }
 ];
